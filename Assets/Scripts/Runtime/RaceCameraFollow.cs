@@ -11,6 +11,15 @@ namespace CarRacing.Runtime
 
         private Vector3 positionVelocity;
 
+        public void SetTarget(Transform value)
+        {
+            target = value;
+            if (target != null)
+            {
+                SnapToTarget();
+            }
+        }
+
         private void Awake()
         {
             if (target == null)

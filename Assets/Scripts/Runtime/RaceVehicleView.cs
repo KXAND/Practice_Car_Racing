@@ -7,6 +7,8 @@ namespace CarRacing.Runtime
     {
         [SerializeField] private Transform vehicleModel;
 
+        public Transform ViewTransform => vehicleModel;
+
         public void Render(RaceState previousState, RaceState currentState, float interpolation)
         {
             float x = Mathf.Lerp(previousState.Vehicle.PositionX, currentState.Vehicle.PositionX, interpolation) / 1_000f;

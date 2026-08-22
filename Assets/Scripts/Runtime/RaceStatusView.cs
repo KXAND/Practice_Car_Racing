@@ -7,11 +7,17 @@ namespace CarRacing.Runtime
     {
         private RaceState state;
         private bool hasState;
+        private bool matchEnded;
 
         public void Render(RaceState state)
         {
             this.state = state;
             hasState = true;
+        }
+
+        public void SetMatchEnded()
+        {
+            matchEnded = true;
         }
 
         private void OnGUI()
@@ -21,7 +27,9 @@ namespace CarRacing.Runtime
                 return;
             }
 
-            string phase = state.Phase == RacePhase.Finished ? "Finished - Victory!" : "Racing";
+            string phase = matchEnded
+                ? "Match Ended - Opponent Disconnected"
+                : state.Phase == RacePhase.Finished ? "Finished - Victory!" : "Racing";
             GUI.Box(new Rect(16f, 16f, 310f, 156f), string.Empty);
             GUI.Label(
                 new Rect(30f, 28f, 280f, 132f),

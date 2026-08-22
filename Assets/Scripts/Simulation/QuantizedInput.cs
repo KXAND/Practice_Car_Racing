@@ -5,6 +5,8 @@ namespace CarRacing.Simulation
         public const int MaxSteering = 127;
         public const int MaxPedal = 127;
 
+        public static QuantizedInput Empty => new(0, 0, 0);
+
         public QuantizedInput(int steering, int throttle, int brake)
         {
             Steering = (sbyte)Clamp(steering, -MaxSteering, MaxSteering);
