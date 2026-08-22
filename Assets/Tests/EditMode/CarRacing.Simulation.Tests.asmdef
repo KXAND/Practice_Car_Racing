@@ -1,0 +1,14 @@
+{
+  "name": "CarRacing.Simulation.Tests",
+  "rootNamespace": "CarRacing.Simulation.Tests",
+  "references": [
+    "CarRacing.Simulation"
+  ],
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "autoReferenced": false
+}
