@@ -13,11 +13,14 @@ namespace CarRacing.Runtime
 
         [SerializeField] private RaceInputSource inputSource;
         [SerializeField] private TwoPlayerRaceView raceView;
+        [SerializeField, Min(0)] private int upstreamDelayTicks;
+        [SerializeField, Min(0)] private int dropEveryNthInput;
 
         private readonly PlayerSlotRegistry playerSlots = new();
         private readonly HashSet<int> spawnedConnectionIds = new();
         private FrameSyncServer server;
         private FrameSyncClient client;
+        private UpstreamInputConditioner inputConditioner;
         private uint startNetworkTick;
         private bool matchStarted;
         private bool matchEnded;
@@ -70,11 +73,15 @@ namespace CarRacing.Runtime
                 confirmed.Player1.Steering,
                 confirmed.Player1.Throttle,
                 confirmed.Player1.Brake);
+            if ((confirmed.Frame + 1) % RaceSimulation.TickRate == 0)
+            {
+                BroadcastConfirmedHash(confirmed.Frame, TwoPlayerRaceStateHasher.Compute(server.State));
+            }
         }
 
         private void TimeManager_OnClientTick()
         {
-            if (!matchStarted || client == null || inputSource == null || TimeManager.Tick < startNetworkTick)
+            if (!matchStarted || client == null || inputSource == null || inputConditioner == null || TimeManager.Tick < startNetworkTick)
             {
                 return;
             }
@@ -86,8 +93,18 @@ namespace CarRacing.Runtime
                 Debug.Log($"[FrameSync] Stage=ClientInputCaptured Player={client.PlayerId}");
             }
 
-            InputFrame input = client.CreateLocalInput(sampledInput, client.NextConfirmedFrame);
-            SubmitInput(input.Frame, input.PlayerId, input.Input.Steering, input.Input.Throttle, input.Input.Brake);
+            InputFrame input = client.SampleLocalInput(sampledInput);
+            if (!inputConditioner.Enqueue(input, (int)TimeManager.Tick))
+            {
+                Debug.Log($"[FrameSync] Stage=InputDropped Player={client.PlayerId} Frame={input.Frame}");
+            }
+            while (inputConditioner.TryDequeueDue((int)TimeManager.Tick, out InputFrame dueInput))
+            {
+                SubmitInput(dueInput.Frame, dueInput.PlayerId, dueInput.Input.Steering, dueInput.Input.Throttle, dueInput.Input.Brake);
+            }
+
+            client.PredictNextFrame();
+            raceView.Render(client.State, client.PlayerId, client.GetDebugInfo());
         }
 
         private void ServerManager_OnRemoteConnectionState(NetworkConnection connection, RemoteConnectionStateArgs args)
@@ -181,6 +198,13 @@ namespace CarRacing.Runtime
             if (client != null)
             {
                 client = new FrameSyncClient(client.PlayerId, startFrame);
+                inputConditioner = new UpstreamInputConditioner(upstreamDelayTicks, dropEveryNthInput);
+                if (inputConditioner.WasDelayClamped)
+                {
+                    Debug.LogWarning($"[FrameSync] Invalid upstream delay {upstreamDelayTicks}; falling back to 0. Valid range is 0-1 ticks.");
+                }
+
+                Debug.Log($"[FrameSync] Stage=WeakConfig Delay={inputConditioner.DelayTicks} DropEvery={inputConditioner.DropEveryNthInput}");
             }
 
             startNetworkTick = networkTick;
@@ -212,19 +236,59 @@ namespace CarRacing.Runtime
                 return;
             }
 
+            int rollbackCount = client.RollbackCount;
+            int hashCheckCount = client.HashCheckCount;
             client.Receive(new ConfirmedFrame(
                 frame,
                 new QuantizedInput(player0Steering, player0Throttle, player0Brake),
                 new QuantizedInput(player1Steering, player1Throttle, player1Brake)));
             while (client.TryAdvance())
             {
-                raceView.Render(client.State, client.PlayerId);
+                raceView.Render(client.State, client.PlayerId, client.GetDebugInfo());
+                LogRollbackIfApplied(rollbackCount);
+                rollbackCount = client.RollbackCount;
                 if (!loggedClientRender)
                 {
                     loggedClientRender = true;
                     Debug.Log($"[FrameSync] Stage=ClientFirstConfirmedFrame Frame={frame}");
                 }
             }
+
+            LogHashCheckIfApplied(hashCheckCount);
+        }
+
+        [ObserversRpc]
+        private void BroadcastConfirmedHash(int frame, ulong hash)
+        {
+            if (client == null)
+            {
+                return;
+            }
+
+            int hashCheckCount = client.HashCheckCount;
+            client.ReceiveServerHash(frame, hash);
+            raceView.Render(client.State, client.PlayerId, client.GetDebugInfo());
+            LogHashCheckIfApplied(hashCheckCount);
+        }
+
+        private void LogRollbackIfApplied(int previousRollbackCount)
+        {
+            if (client.RollbackCount == previousRollbackCount)
+            {
+                return;
+            }
+
+            Debug.Log($"[FrameSync] Stage=Rollback Player={client.PlayerId} Frame={client.LastRollbackFrame} Length={client.LastRollbackLength} Total={client.RollbackCount}");
+        }
+
+        private void LogHashCheckIfApplied(int previousHashCheckCount)
+        {
+            if (client.HashCheckCount == previousHashCheckCount)
+            {
+                return;
+            }
+
+            Debug.Log($"[FrameSync] Stage=HashCheck Player={client.PlayerId} Frame={client.LastHashCheckFrame} Local={client.ConfirmedHash:X16} Server={client.LastServerHash:X16} Match={!client.HashMismatch}");
         }
     }
 }

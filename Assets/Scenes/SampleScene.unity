@@ -289,6 +289,8 @@ MonoBehaviour:
   _networkObjectCache: {fileID: 0}
   inputSource: {fileID: 655989181}
   raceView: {fileID: 655989185}
+  upstreamDelayTicks: 1
+  dropEveryNthInput: 3
 --- !u!114 &281829563
 MonoBehaviour:
   m_ObjectHideFlags: 0
