@@ -5,7 +5,7 @@ namespace CarRacing.Runtime
 {
     public sealed class KeyboardRaceInput : RaceInputSource
     {
-        public override QuantizedInput ReadInput()
+        public override QuantizedInput ReadInput(int targetFrame)
         {
             Keyboard keyboard = Keyboard.current;
             if (keyboard == null)

@@ -28,6 +28,25 @@ namespace CarRacing.Runtime
         private bool loggedServerInput;
         private bool loggedClientRender;
         private bool loggedRejectedInput;
+        private bool loggedFinish;
+
+        public void ConfigureFromCommandLine(bool useScriptedInput, int? delayOverride, int? dropOverride)
+        {
+            if (useScriptedInput)
+            {
+                inputSource = gameObject.AddComponent<ScriptedRaceInput>();
+            }
+
+            if (delayOverride.HasValue)
+            {
+                upstreamDelayTicks = NormalizeDelayOverride(delayOverride.Value);
+            }
+
+            if (dropOverride.HasValue)
+            {
+                dropEveryNthInput = NormalizeDropOverride(dropOverride.Value);
+            }
+        }
 
         public override void OnStartServer()
         {
@@ -86,7 +105,7 @@ namespace CarRacing.Runtime
                 return;
             }
 
-            QuantizedInput sampledInput = inputSource.ReadInput();
+            QuantizedInput sampledInput = inputSource.ReadInput(client.NextLocalInputFrame);
             if (!loggedClientInput && (sampledInput.Steering != 0 || sampledInput.Throttle != 0 || sampledInput.Brake != 0))
             {
                 loggedClientInput = true;
@@ -204,7 +223,7 @@ namespace CarRacing.Runtime
                     Debug.LogWarning($"[FrameSync] Invalid upstream delay {upstreamDelayTicks}; falling back to 0. Valid range is 0-1 ticks.");
                 }
 
-                Debug.Log($"[FrameSync] Stage=WeakConfig Delay={inputConditioner.DelayTicks} DropEvery={inputConditioner.DropEveryNthInput}");
+                Debug.Log($"[FrameSync] Stage=WeakConfig Player={client.PlayerId} Delay={inputConditioner.DelayTicks} DropEvery={inputConditioner.DropEveryNthInput}");
             }
 
             startNetworkTick = networkTick;
@@ -247,6 +266,7 @@ namespace CarRacing.Runtime
                 raceView.Render(client.State, client.PlayerId, client.GetDebugInfo());
                 LogRollbackIfApplied(rollbackCount);
                 rollbackCount = client.RollbackCount;
+                LogFinishedIfNeeded();
                 if (!loggedClientRender)
                 {
                     loggedClientRender = true;
@@ -289,6 +309,40 @@ namespace CarRacing.Runtime
             }
 
             Debug.Log($"[FrameSync] Stage=HashCheck Player={client.PlayerId} Frame={client.LastHashCheckFrame} Local={client.ConfirmedHash:X16} Server={client.LastServerHash:X16} Match={!client.HashMismatch}");
+        }
+
+        private void LogFinishedIfNeeded()
+        {
+            RaceState localState = client.PlayerId == 0 ? client.State.Player0 : client.State.Player1;
+            if (loggedFinish || localState.Phase != RacePhase.Finished)
+            {
+                return;
+            }
+
+            loggedFinish = true;
+            Debug.Log($"[FrameSync] Stage=RaceFinished Player={client.PlayerId} Frame={localState.Frame} Lap={localState.Lap}");
+        }
+
+        private int NormalizeDelayOverride(int value)
+        {
+            if (value >= 0 && value <= 1)
+            {
+                return value;
+            }
+
+            Debug.LogWarning($"[FrameSync] Invalid upstream delay {value}; falling back to 0. Valid range is 0-1 ticks.");
+            return 0;
+        }
+
+        private int NormalizeDropOverride(int value)
+        {
+            if (value >= 0)
+            {
+                return value;
+            }
+
+            Debug.LogWarning($"[FrameSync] Invalid drop interval {value}; falling back to 0.");
+            return 0;
         }
     }
 }

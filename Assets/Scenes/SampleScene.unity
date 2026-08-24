@@ -146,9 +146,10 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 4c486cd5cbda0f044bd094c71242b560, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::CarRacing.Runtime.NetworkBootstrap
   networkManager: {fileID: 1763237006}
+  frameSync: {fileID: 281829562}
 --- !u!4 &29648833
 Transform:
   m_ObjectHideFlags: 0
@@ -282,15 +283,15 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 108cb7e8656355e42933d60d5597149e, type: 3}
-  m_Name: 
+  m_Name: ""
   m_EditorClassIdentifier: Assembly-CSharp::CarRacing.Runtime.FishNetFrameSync
   _componentIndexCache: 255
   _addedNetworkObject: {fileID: 281829563}
   _networkObjectCache: {fileID: 0}
   inputSource: {fileID: 655989181}
   raceView: {fileID: 655989185}
-  upstreamDelayTicks: 1
-  dropEveryNthInput: 3
+  upstreamDelayTicks: 0
+  dropEveryNthInput: 0
 --- !u!114 &281829563
 MonoBehaviour:
   m_ObjectHideFlags: 0

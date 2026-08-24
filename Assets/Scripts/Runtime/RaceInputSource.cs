@@ -5,6 +5,6 @@ namespace CarRacing.Runtime
 {
     public abstract class RaceInputSource : MonoBehaviour
     {
-        public abstract QuantizedInput ReadInput();
+        public abstract QuantizedInput ReadInput(int targetFrame);
     }
 }

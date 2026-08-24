@@ -253,7 +253,7 @@ namespace CarRacing.Simulation.Tests
 
             for (int frame = 0; frame < 400; frame++)
             {
-                QuantizedInput playerZeroInput = LapInputAt(frame);
+                QuantizedInput playerZeroInput = RaceDemoInputSequence.ForFrame(frame);
                 Assert.That(server.TrySubmit(new InputFrame(frame, 0, playerZeroInput), 0), Is.True);
 
                 ConfirmedFrame confirmed = server.AdvanceFrame();
@@ -273,19 +273,6 @@ namespace CarRacing.Simulation.Tests
             Assert.That(server.State.Player0.Phase, Is.EqualTo(RacePhase.Finished));
             Assert.That(server.State.Player0.Lap, Is.EqualTo(1));
             Assert.That(server.State.Player1.Vehicle.Speed, Is.EqualTo(0));
-        }
-
-        private static QuantizedInput LapInputAt(int frame)
-        {
-            bool turnLeft =
-                (frame >= 76 && frame < 110) ||
-                (frame >= 123 && frame < 160) ||
-                (frame >= 209 && frame < 248) ||
-                (frame >= 263 && frame < 288);
-            return new QuantizedInput(
-                turnLeft ? -QuantizedInput.MaxSteering : 0,
-                QuantizedInput.MaxPedal,
-                0);
         }
 
         private static void AssertWorldStateEqual(TwoPlayerRaceState expected, TwoPlayerRaceState actual)

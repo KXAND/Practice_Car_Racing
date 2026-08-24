@@ -33,7 +33,7 @@ namespace CarRacing.Runtime
             while (accumulatedTime >= tickDuration)
             {
                 previousState = currentState;
-                currentState = RaceSimulation.Step(currentState, inputSource.ReadInput());
+                currentState = RaceSimulation.Step(currentState, inputSource.ReadInput(currentState.Frame));
                 accumulatedTime -= tickDuration;
             }
 

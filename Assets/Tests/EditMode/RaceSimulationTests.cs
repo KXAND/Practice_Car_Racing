@@ -221,7 +221,7 @@ namespace CarRacing.Simulation.Tests
 
             for (int frame = 0; frame < 340; frame++)
             {
-                QuantizedInput input = LapInputAt(frame);
+                QuantizedInput input = RaceDemoInputSequence.ForFrame(frame);
                 firstRun = RaceSimulation.Step(firstRun, input);
                 secondRun = RaceSimulation.Step(secondRun, input);
 
@@ -235,6 +235,27 @@ namespace CarRacing.Simulation.Tests
             Assert.That(firstRun.Phase, Is.EqualTo(RacePhase.Finished));
             Assert.That(firstRun.Lap, Is.EqualTo(1));
             Assert.That(firstRun.Frame, Is.EqualTo(286));
+        }
+
+        [Test]
+        public void ScriptedPlayerSequenceCompletesOneLapFromPlayerOneSpawn()
+        {
+            RaceState state = TwoPlayerRaceState.CreateDefault().Player1;
+
+            for (int frame = 0; frame < 500; frame++)
+            {
+                QuantizedInput input = frame < FrameSyncClient.InputDelayFrames
+                    ? QuantizedInput.Empty
+                    : RaceDemoInputSequence.ForFrame(frame);
+                state = RaceSimulation.Step(state, input);
+                if (state.Phase == RacePhase.Finished)
+                {
+                    break;
+                }
+            }
+
+            Assert.That(state.Phase, Is.EqualTo(RacePhase.Finished));
+            Assert.That(state.Lap, Is.EqualTo(1));
         }
 
         [Test]
@@ -265,17 +286,5 @@ namespace CarRacing.Simulation.Tests
             return RaceSimulation.Step(atCheckpoint, new QuantizedInput(0, 0, 0));
         }
 
-        private static QuantizedInput LapInputAt(int frame)
-        {
-            bool turnLeft =
-                (frame >= 76 && frame < 110) ||
-                (frame >= 123 && frame < 160) ||
-                (frame >= 209 && frame < 248) ||
-                (frame >= 263 && frame < 288);
-            return new QuantizedInput(
-                turnLeft ? -QuantizedInput.MaxSteering : 0,
-                QuantizedInput.MaxPedal,
-                0);
-        }
     }
 }

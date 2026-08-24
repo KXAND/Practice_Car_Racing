@@ -234,6 +234,7 @@ namespace CarRacing.Simulation
         public TwoPlayerRaceState ConfirmedState { get; private set; }
         public int NextConfirmedFrame { get; private set; }
         public int NextPredictedFrame { get; private set; }
+        public int NextLocalInputFrame => NextPredictedFrame + InputDelayFrames;
         public int PredictionDepth => NextPredictedFrame - NextConfirmedFrame;
         public int RollbackCount { get; private set; }
         public int LastRollbackLength { get; private set; }
@@ -251,7 +252,7 @@ namespace CarRacing.Simulation
 
         public InputFrame SampleLocalInput(QuantizedInput input)
         {
-            InputFrame frame = CreateLocalInput(input, NextPredictedFrame);
+            InputFrame frame = new(NextLocalInputFrame, PlayerId, input);
             localInputs.Store(frame.Frame, input);
             return frame;
         }
