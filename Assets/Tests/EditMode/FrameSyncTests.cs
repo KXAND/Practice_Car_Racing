@@ -1,296 +1,480 @@
+using CarRacing.Input;
+using CarRacing.Network.FrameSync;
+using CarRacing.Race;
 using NUnit.Framework;
 
-namespace CarRacing.Simulation.Tests
+namespace CarRacing.Tests
 {
     public sealed class FrameSyncTests
     {
         [Test]
-        public void PlayerSlotsRejectReplacementConnectionsAfterTheMatchEnds()
-        {
-            PlayerSlotRegistry slots = new();
-
-            Assert.That(slots.TryAssign(10, out byte firstPlayer), Is.True);
-            Assert.That(slots.TryAssign(11, out byte secondPlayer), Is.True);
-            slots.EndMatch();
-
-            Assert.That(firstPlayer, Is.EqualTo(0));
-            Assert.That(secondPlayer, Is.EqualTo(1));
-            Assert.That(slots.TryAssign(12, out _), Is.False);
-        }
-
-        [Test]
-        public void WorldHasherDistinguishesPlayerOrder()
-        {
-            TwoPlayerRaceState state = TwoPlayerRaceState.CreateDefault();
-            TwoPlayerRaceState swapped = new(state.Player1, state.Player0);
-
-            Assert.That(TwoPlayerRaceStateHasher.Compute(swapped), Is.Not.EqualTo(TwoPlayerRaceStateHasher.Compute(state)));
-        }
-
-        [Test]
-        public void ServerRepeatsThePreviousInputWhenTheCurrentFrameIsMissing()
+        public void ServerMovesAssignedPlayersThroughReadyAndRaceStart()
         {
             FrameSyncServer server = new();
-            Assert.That(server.TrySubmit(new InputFrame(0, 0, new QuantizedInput(0, QuantizedInput.MaxPedal, 0)), 0), Is.True);
+            Assert.That(server.TryAssignPlayer(10, out byte first), Is.True);
+            Assert.That(server.TryAssignPlayer(11, out byte second), Is.True);
 
-            ConfirmedFrame first = server.AdvanceFrame();
-            ConfirmedFrame second = server.AdvanceFrame();
+            Assert.That(first, Is.EqualTo(0));
+            Assert.That(second, Is.EqualTo(1));
+            Assert.That(server.State.Player0.Status, Is.EqualTo(PlayerStatus.Loading));
+            Assert.That(server.State.Player1.Status, Is.EqualTo(PlayerStatus.Loading));
+            Assert.That(server.MarkPlayerReady(10), Is.True);
+            Assert.That(server.MarkPlayerReady(11), Is.True);
+            Assert.That(server.CanStartRace(), Is.True);
+            Assert.That(server.StartRace(), Is.True);
+            Assert.That(server.State.Phase, Is.EqualTo(RacePhase.Racing));
+            Assert.That(server.State.Player0.Status, Is.EqualTo(PlayerStatus.Playing));
+            Assert.That(server.State.Player1.Status, Is.EqualTo(PlayerStatus.Playing));
+        }
 
-            Assert.That(first.Player0.Throttle, Is.EqualTo(QuantizedInput.MaxPedal));
-            Assert.That(second.Player0.Throttle, Is.EqualTo(QuantizedInput.MaxPedal));
+        [Test]
+        public void PreRaceDisconnectReleasesThePlayerSlot()
+        {
+            FrameSyncServer server = new();
+            Assert.That(server.TryAssignPlayer(10, out byte playerId), Is.True);
+            Assert.That(server.MarkPlayerReady(10), Is.True);
+
+            Assert.That(server.DisconnectPlayer(10), Is.True);
+            Assert.That(server.State.Phase, Is.EqualTo(RacePhase.WaitingForPlayers));
+            Assert.That(server.State.GetPlayer(playerId).Status, Is.EqualTo(PlayerStatus.Unassigned));
+            Assert.That(server.TryAssignPlayer(12, out byte replacement), Is.True);
+            Assert.That(replacement, Is.EqualTo(playerId));
+        }
+
+        [Test]
+        public void UnknownDisconnectDoesNotChangeRacePhase()
+        {
+            FrameSyncServer server = CreateStartedRace();
+            RacePhase phase = server.State.Phase;
+
+            Assert.That(server.DisconnectPlayer(42), Is.False);
+            Assert.That(server.State.Phase, Is.EqualTo(phase));
+        }
+
+        [Test]
+        public void WorldHashDistinguishesPlayerOrder()
+        {
+            RaceState state = RaceState.CreateDefault();
+            RaceState swapped = new(
+                state.FrameIndex,
+                state.Phase,
+                state.WinnerPlayerId,
+                state.Player1,
+                state.Player0);
+            Assert.That(swapped.DeterministicHash(), Is.Not.EqualTo(state.DeterministicHash()));
+        }
+
+        [Test]
+        public void ServerRepeatsPreviousInputWhenCurrentFrameIsMissing()
+        {
+            FrameSyncServer server = CreateStartedRace();
+            Assert.That(server.TrySubmit(new InputFrame(0, 0, new QuantizedInput(0, GlobalSettings.MaxPedal, 0)), 0), Is.True);
+            RaceFrame first = server.AdvanceFrame();
+            RaceFrame second = server.AdvanceFrame();
+            Assert.That(first.Player0.Throttle, Is.EqualTo(GlobalSettings.MaxPedal));
+            Assert.That(second.Player0.Throttle, Is.EqualTo(GlobalSettings.MaxPedal));
             Assert.That(second.Player1.Throttle, Is.EqualTo(0));
         }
 
         [Test]
-        public void ServerRejectsInputsSubmittedForAnotherPlayer()
+        public void ServerRejectsInputForAnotherPlayer()
         {
-            FrameSyncServer server = new();
-
-            bool accepted = server.TrySubmit(new InputFrame(0, 1, new QuantizedInput(0, QuantizedInput.MaxPedal, 0)), 0);
-
-            Assert.That(accepted, Is.False);
+            FrameSyncServer server = CreateStartedRace();
+            Assert.That(server.TrySubmit(new InputFrame(0, 1, QuantizedInput.Empty), 0), Is.False);
         }
 
         [Test]
-        public void ClientOnlyAdvancesWhenConfirmedFramesAreContiguous()
+        public void ClientConsumesContiguousConfirmedFramesInternally()
         {
-            FrameSyncClient client = new(0);
-            client.Receive(new ConfirmedFrame(1, QuantizedInput.Empty, QuantizedInput.Empty));
-            Assert.That(client.TryAdvance(), Is.False);
-
-            client.Receive(new ConfirmedFrame(0, QuantizedInput.Empty, QuantizedInput.Empty));
-
-            Assert.That(client.TryAdvance(), Is.True);
-            Assert.That(client.TryAdvance(), Is.True);
-            Assert.That(client.NextConfirmedFrame, Is.EqualTo(2));
+            FrameSyncClient client = CreateStartedClient(0);
+            Assert.That(client.ApplyConfirmed(Frame(1)), Is.False);
+            Assert.That(client.ApplyConfirmed(Frame(0)), Is.True);
+            Assert.That(client.GetDebugInfo().ConfirmedFrameIndex, Is.EqualTo(1));
         }
 
         [Test]
-        public void ServerAndClientProduceTheSameWorldStateForConfirmedFrames()
+        public void ClientTargetsInputsTwoFramesAheadAndPredictsInOneCall()
         {
-            FrameSyncServer server = new();
-            FrameSyncClient client = new(0);
-
-            for (int frame = 0; frame < 120; frame++)
-            {
-                QuantizedInput input = frame < 90
-                    ? new QuantizedInput(0, QuantizedInput.MaxPedal, 0)
-                    : QuantizedInput.Empty;
-                server.TrySubmit(new InputFrame(frame, 0, input), 0);
-                ConfirmedFrame confirmed = server.AdvanceFrame();
-                client.Receive(confirmed);
-                Assert.That(client.TryAdvance(), Is.True);
-                AssertWorldStateEqual(server.State, client.State);
-            }
+            FrameSyncClient client = CreateStartedClient(1);
+            InputFrame input = client.Predict(new QuantizedInput(10, 20, 30));
+            Assert.That(input.FrameIndex, Is.EqualTo(GlobalSettings.InputDelayFrames));
+            Assert.That(input.PlayerId, Is.EqualTo(1));
+            Assert.That(client.GetDebugInfo().LocalFrameIndex, Is.EqualTo(0));
         }
 
         [Test]
-        public void ClientTargetsInputsTwoFramesAhead()
+        public void ClientBeginsPredictionAtTheScheduledStartFrame()
         {
             FrameSyncClient client = new(1);
 
-            InputFrame input = client.CreateLocalInput(new QuantizedInput(10, 20, 30), 10);
+            client.StartRacePrediction();
+            InputFrame input = client.Predict(QuantizedInput.Empty);
 
-            Assert.That(input.Frame, Is.EqualTo(12));
-            Assert.That(input.PlayerId, Is.EqualTo(1));
+            Assert.That(input.FrameIndex, Is.EqualTo(GlobalSettings.InputDelayFrames));
+            Assert.That(client.CurrentState.Phase, Is.EqualTo(RacePhase.Racing));
+            Assert.That(client.GetDebugInfo().LocalFrameIndex, Is.EqualTo(0));
         }
 
         [Test]
-        public void ClientStartsConfirmingAtTheServerSpecifiedFrame()
+        public void ServerAndClientProduceSameWorldForConfirmedFrames()
         {
-            FrameSyncClient client = new(1, 10);
-
-            client.Receive(new ConfirmedFrame(9, QuantizedInput.Empty, QuantizedInput.Empty));
-            client.Receive(new ConfirmedFrame(10, QuantizedInput.Empty, QuantizedInput.Empty));
-
-            Assert.That(client.TryAdvance(), Is.True);
-            Assert.That(client.NextConfirmedFrame, Is.EqualTo(11));
+            FrameSyncServer server = CreateStartedRace();
+            FrameSyncClient client = CreateStartedClient(0);
+            for (int frameIndex = 0; frameIndex < 120; frameIndex++)
+            {
+                QuantizedInput input = frameIndex < 90 ? new QuantizedInput(0, GlobalSettings.MaxPedal, 0) : QuantizedInput.Empty;
+                server.TrySubmit(new InputFrame(frameIndex, 0, input), 0);
+                Assert.That(client.ApplyConfirmed(server.AdvanceFrame()), Is.True);
+                AssertWorldStateEqual(server.State, client.CurrentState);
+            }
         }
 
         [Test]
-        public void ClientRollsBackMispredictedRemoteInputToTheConfirmedWorldState()
+        public void ClientRollsBackMispredictedRemoteInput()
         {
-            FrameSyncServer server = new();
-            FrameSyncClient client = new(0);
-
-            for (int frame = 0; frame < 12; frame++)
+            FrameSyncServer server = CreateStartedRace();
+            FrameSyncClient client = CreateStartedClient(0);
+            for (int frameIndex = 0; frameIndex < 12; frameIndex++)
             {
-                client.SampleLocalInput(QuantizedInput.Empty);
-                client.PredictNextFrame();
-                if (frame == 2)
-                {
-                    Assert.That(server.TrySubmit(new InputFrame(frame, 1, new QuantizedInput(0, QuantizedInput.MaxPedal, 0)), 1), Is.True);
-                }
+                client.Predict(QuantizedInput.Empty);
+                if (frameIndex == 2) server.TrySubmit(new InputFrame(frameIndex, 1, new QuantizedInput(0, GlobalSettings.MaxPedal, 0)), 1);
             }
 
-            for (int frame = 0; frame < 12; frame++)
-            {
-                client.Receive(server.AdvanceFrame());
-                while (client.TryAdvance())
-                {
-                }
-            }
-
+            for (int frameIndex = 0; frameIndex < 12; frameIndex++) client.ApplyConfirmed(server.AdvanceFrame());
             Assert.That(client.RollbackCount, Is.EqualTo(1));
             Assert.That(client.LastRollbackLength, Is.GreaterThan(0));
-            AssertWorldStateEqual(server.State, client.State);
+            AssertWorldStateEqual(server.State, client.CurrentState);
         }
 
         [Test]
-        public void UpstreamConditionerDelaysInputsAndDropsEveryConfiguredNthInput()
+        public void UpstreamConditionerDelaysAndDropsEveryNthInput()
         {
-            UpstreamInputConditioner conditioner = new(delayTicks: 1, dropEveryNthInput: 3);
+            UpstreamInputConditioner conditioner = new(1, 3);
             InputFrame first = new(2, 0, QuantizedInput.Empty);
-            InputFrame second = new(3, 0, new QuantizedInput(0, QuantizedInput.MaxPedal, 0));
-            InputFrame dropped = new(4, 0, new QuantizedInput(QuantizedInput.MaxSteering, 0, 0));
-
-            conditioner.Enqueue(first, 0);
-            conditioner.Enqueue(second, 1);
-            conditioner.Enqueue(dropped, 2);
-
-            Assert.That(conditioner.TryDequeueDue(0, out _), Is.False);
-            Assert.That(conditioner.TryDequeueDue(1, out InputFrame deliveredFirst), Is.True);
-            Assert.That(deliveredFirst.Frame, Is.EqualTo(first.Frame));
-            Assert.That(conditioner.TryDequeueDue(2, out InputFrame deliveredSecond), Is.True);
-            Assert.That(deliveredSecond.Frame, Is.EqualTo(second.Frame));
-            Assert.That(conditioner.TryDequeueDue(3, out _), Is.False);
+            InputFrame second = new(3, 0, new QuantizedInput(0, GlobalSettings.MaxPedal, 0));
+            InputFrame dropped = new(4, 0, new QuantizedInput(GlobalSettings.MaxSteering, 0, 0));
+            Assert.That(conditioner.ScheduleInput(first, 0), Is.True);
+            Assert.That(conditioner.ScheduleInput(second, 1), Is.True);
+            Assert.That(conditioner.ScheduleInput(dropped, 2), Is.False);
+            Assert.That(conditioner.PopReadyInput(0, out _), Is.False);
+            Assert.That(conditioner.PopReadyInput(1, out InputFrame deliveredFirst), Is.True);
+            Assert.That(deliveredFirst.FrameIndex, Is.EqualTo(first.FrameIndex));
+            Assert.That(conditioner.PopReadyInput(2, out InputFrame deliveredSecond), Is.True);
+            Assert.That(deliveredSecond.FrameIndex, Is.EqualTo(second.FrameIndex));
         }
 
         [Test]
         public void InvalidUpstreamDelayFallsBackToImmediateDelivery()
         {
-            UpstreamInputConditioner conditioner = new(delayTicks: 2, dropEveryNthInput: 0);
+            UpstreamInputConditioner conditioner = new(2, 0);
             InputFrame input = new(2, 0, QuantizedInput.Empty);
-
-            conditioner.Enqueue(input, 10);
-
-            Assert.That(conditioner.TryDequeueDue(10, out InputFrame delivered), Is.True);
-            Assert.That(delivered.Frame, Is.EqualTo(input.Frame));
+            conditioner.ScheduleInput(input, 10);
+            Assert.That(conditioner.PopReadyInput(10, out InputFrame delivered), Is.True);
+            Assert.That(delivered.FrameIndex, Is.EqualTo(input.FrameIndex));
         }
 
         [Test]
-        public void WeakUpstreamConditionsTriggerRollbackAndRecoverConfirmedHashes()
+        public void WeakUpstreamConditionsRollbackAndRecoverHashes()
         {
-            FrameSyncServer server = new();
-            FrameSyncClient client = new(0);
-            UpstreamInputConditioner conditioner = new(delayTicks: 1, dropEveryNthInput: 3);
+            FrameSyncServer server = CreateStartedRace();
+            FrameSyncClient client = CreateStartedClient(0);
+            UpstreamInputConditioner conditioner = new(1, 3);
             int hashComparisons = 0;
-
             for (int tick = 0; tick < 90; tick++)
             {
-                QuantizedInput sampledInput = tick % 2 == 0
-                    ? new QuantizedInput(QuantizedInput.MaxSteering, QuantizedInput.MaxPedal, 0)
-                    : new QuantizedInput(0, QuantizedInput.MaxPedal, 0);
-                InputFrame input = client.SampleLocalInput(sampledInput);
-                conditioner.Enqueue(input, tick);
-                client.PredictNextFrame();
-                while (conditioner.TryDequeueDue(tick, out InputFrame dueInput))
+                QuantizedInput sampled = tick % 2 == 0 ? new QuantizedInput(GlobalSettings.MaxSteering, GlobalSettings.MaxPedal, 0) : new QuantizedInput(0, GlobalSettings.MaxPedal, 0);
+                InputFrame input = client.Predict(sampled);
+                conditioner.ScheduleInput(input, tick);
+                while (conditioner.PopReadyInput(tick, out InputFrame due)) server.TrySubmit(due, due.PlayerId);
+                RaceFrame confirmed = server.AdvanceFrame();
+                client.ApplyConfirmed(confirmed);
+                if ((confirmed.FrameIndex + 1) % GlobalSettings.HashIntervalFrames == 0)
                 {
-                    server.TrySubmit(dueInput, dueInput.PlayerId);
-                }
-
-                ConfirmedFrame confirmed = server.AdvanceFrame();
-                client.Receive(confirmed);
-                while (client.TryAdvance())
-                {
-                }
-
-                if ((confirmed.Frame + 1) % RaceSimulation.TickRate == 0)
-                {
-                    client.ReceiveServerHash(confirmed.Frame, TwoPlayerRaceStateHasher.Compute(server.State));
+                    Assert.That(client.PushConfirmedHash(confirmed.FrameIndex, server.State.DeterministicHash()), Is.True);
                     Assert.That(client.HashMismatch, Is.False);
                     hashComparisons++;
                 }
             }
 
             Assert.That(client.RollbackCount, Is.GreaterThan(0));
-            Assert.That(server.State.Player0.Vehicle.PositionZ, Is.Not.EqualTo(-7_000));
+            Assert.That(server.State.Player0.Vehicle.PositionZ, Is.Not.EqualTo(RaceState.Player0StartZ));
             Assert.That(hashComparisons, Is.GreaterThan(1));
-            AssertWorldStateEqual(server.State, client.ConfirmedState);
         }
 
         [Test]
-        public void ClientComparesAHashReceivedBeforeItsConfirmedFrame()
+        public void CorrectHashClearsEarlierDesync()
         {
-            FrameSyncServer server = new();
-            FrameSyncClient client = new(0);
-
-            ConfirmedFrame confirmed = server.AdvanceFrame();
-            ulong expectedHash = TwoPlayerRaceStateHasher.Compute(server.State);
-            client.ReceiveServerHash(confirmed.Frame, expectedHash);
-            client.Receive(confirmed);
-
-            Assert.That(client.TryAdvance(), Is.True);
-            Assert.That(client.ConfirmedHash, Is.EqualTo(expectedHash));
-            Assert.That(client.HashMismatch, Is.False);
-        }
-
-        [Test]
-        public void CorrectHashClearsTheDesyncReportedByAnEarlierIncorrectHash()
-        {
-            FrameSyncServer server = new();
-            FrameSyncClient client = new(0);
-
-            ConfirmedFrame confirmed = server.AdvanceFrame();
-            client.Receive(confirmed);
-            Assert.That(client.TryAdvance(), Is.True);
-
-            ulong correctHash = TwoPlayerRaceStateHasher.Compute(server.State);
-            client.ReceiveServerHash(confirmed.Frame, correctHash ^ 1UL);
+            FrameSyncServer server = CreateStartedRace();
+            FrameSyncClient client = CreateStartedClient(0);
+            RaceFrame confirmed = server.AdvanceFrame();
+            client.ApplyConfirmed(confirmed);
+            ulong correctHash = server.State.DeterministicHash();
+            Assert.That(client.PushConfirmedHash(confirmed.FrameIndex, correctHash ^ 1UL), Is.True);
             Assert.That(client.HashMismatch, Is.True);
-
-            client.ReceiveServerHash(confirmed.Frame, correctHash);
+            Assert.That(client.PushConfirmedHash(confirmed.FrameIndex, correctHash), Is.True);
             Assert.That(client.HashMismatch, Is.False);
             Assert.That(client.ConfirmedHash, Is.EqualTo(correctHash));
         }
 
         [Test]
-        public void ServerAndBothClientsFinishTheSameLapWithTheSameWorldState()
+        public void ClientReportsHashReceivedBeforeItsConfirmedFrame()
+        {
+            FrameSyncServer server = CreateStartedRace();
+            FrameSyncClient client = CreateStartedClient(0);
+            RaceFrame confirmed = server.AdvanceFrame();
+            ulong expectedHash = server.State.DeterministicHash();
+
+            Assert.That(client.PushConfirmedHash(confirmed.FrameIndex, expectedHash), Is.False);
+            client.ApplyConfirmed(confirmed);
+
+            Assert.That(client.HashCheckCount, Is.EqualTo(0));
+            Assert.That(client.PushConfirmedHash(confirmed.FrameIndex, expectedHash), Is.True);
+            Assert.That(client.HashMismatch, Is.False);
+        }
+
+        [Test]
+        public void DisconnectedPlayerCannotSubmitOrReuseItsPreviousInput()
+        {
+            FrameSyncServer server = CreateStartedRace();
+            Assert.That(server.TrySubmit(new InputFrame(0, 0, new QuantizedInput(0, GlobalSettings.MaxPedal, 0)), 0), Is.True);
+            server.AdvanceFrame();
+
+            Assert.That(server.DisconnectPlayer(10), Is.True);
+            Assert.That(server.TrySubmit(new InputFrame(1, 0, new QuantizedInput(0, GlobalSettings.MaxPedal, 0)), 0), Is.False);
+            RaceFrame confirmed = server.AdvanceFrame();
+
+            Assert.That(server.State.Player0.Status, Is.EqualTo(PlayerStatus.Disconnected));
+            Assert.That(confirmed.Player0, Is.EqualTo(QuantizedInput.Empty));
+            Assert.That(server.State.Phase, Is.EqualTo(RacePhase.Racing));
+        }
+
+        [Test]
+        public void ConfirmedControlStateMismatchTriggersRollback()
+        {
+            FrameSyncClient client = CreateStartedClient(0);
+            client.Predict(QuantizedInput.Empty);
+            RaceState state = CreateRacingState(0);
+            PlayerRaceState disconnectedPlayer = new(
+                state.Player1.Vehicle,
+                state.Player1.NextCheckpoint,
+                state.Player1.Lap,
+                PlayerStatus.Disconnected);
+            RaceFrame confirmed = new(new RaceState(
+                state.FrameIndex,
+                state.Phase,
+                state.WinnerPlayerId,
+                state.Player0,
+                disconnectedPlayer), new RaceInputs(QuantizedInput.Empty, QuantizedInput.Empty));
+
+            Assert.That(client.ApplyConfirmed(confirmed), Is.True);
+            Assert.That(client.RollbackCount, Is.EqualTo(1));
+            Assert.That(client.CurrentState.Player1.Status, Is.EqualTo(PlayerStatus.Disconnected));
+        }
+
+        [Test]
+        public void OneDisconnectedPlayerLeavesTheOtherPlayerAbleToFinish()
+        {
+            FrameSyncServer server = CreateStartedRace();
+            Assert.That(server.DisconnectPlayer(10), Is.True);
+
+            RunScriptedPlayerUntilFinished(server, 1);
+
+            Assert.That(server.State.Player0.Status, Is.EqualTo(PlayerStatus.Disconnected));
+            Assert.That(server.State.Player1.Status, Is.EqualTo(PlayerStatus.Finished));
+            Assert.That(server.State.Phase, Is.EqualTo(RacePhase.Finished));
+        }
+
+        [Test]
+        public void BothDisconnectedPlayersAbortTheRace()
+        {
+            FrameSyncServer server = CreateStartedRace();
+
+            Assert.That(server.DisconnectPlayer(10), Is.True);
+            Assert.That(server.DisconnectPlayer(11), Is.True);
+
+            Assert.That(server.State.Player0.Status, Is.EqualTo(PlayerStatus.Disconnected));
+            Assert.That(server.State.Player1.Status, Is.EqualTo(PlayerStatus.Disconnected));
+            Assert.That(server.State.Phase, Is.EqualTo(RacePhase.Aborted));
+        }
+
+        [Test]
+        public void FinishedPlayerCanSubmitInputAndMoveOnTheServer()
+        {
+            FrameSyncServer server = CreateStartedRace();
+            RunScriptedPlayerUntilFinished(server, 0);
+            VehicleState before = server.State.Player0.Vehicle;
+            int beforeNextCheckpoint = server.State.Player0.NextCheckpoint;
+            int beforeLap = server.State.Player0.Lap;
+            byte beforeWinnerPlayerId = server.State.WinnerPlayerId;
+
+            Assert.That(server.TrySubmit(new InputFrame(
+                server.NextFrameIndex,
+                0,
+                new QuantizedInput(0, GlobalSettings.MaxPedal, 0)), 0), Is.True);
+            server.AdvanceFrame();
+
+            Assert.That(server.State.Player0.Status, Is.EqualTo(PlayerStatus.Finished));
+            Assert.That(server.State.Player0.Vehicle, Is.Not.EqualTo(before));
+            Assert.That(server.State.Player0.NextCheckpoint, Is.EqualTo(beforeNextCheckpoint));
+            Assert.That(server.State.Player0.Lap, Is.EqualTo(beforeLap));
+            Assert.That(server.State.WinnerPlayerId, Is.EqualTo(beforeWinnerPlayerId));
+        }
+
+        [Test]
+        public void DisconnectAfterFinishedRaceKeepsFinishedPhase()
+        {
+            FrameSyncServer server = CreateStartedRace();
+            Assert.That(server.DisconnectPlayer(11), Is.True);
+            RunScriptedPlayerUntilFinished(server, 0);
+            Assert.That(server.State.Phase, Is.EqualTo(RacePhase.Finished));
+
+            Assert.That(server.DisconnectPlayer(10), Is.True);
+
+            Assert.That(server.State.Phase, Is.EqualTo(RacePhase.Finished));
+        }
+
+        [Test]
+        public void PhaseOnlyConfirmationMismatchTriggersRollback()
+        {
+            FrameSyncClient client = CreateStartedClient(0);
+            client.Predict(QuantizedInput.Empty);
+            RaceState racing = CreateRacingState(0);
+            RaceFrame confirmed = new(new RaceState(
+                racing.FrameIndex,
+                RacePhase.WinnerDecided,
+                racing.WinnerPlayerId,
+                racing.Player0,
+                racing.Player1), new RaceInputs(QuantizedInput.Empty, QuantizedInput.Empty));
+
+            Assert.That(client.ApplyConfirmed(confirmed), Is.True);
+            Assert.That(client.RollbackCount, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void WinnerOnlyConfirmationMismatchTriggersRollback()
+        {
+            FrameSyncClient client = CreateStartedClient(0);
+            client.Predict(QuantizedInput.Empty);
+            RaceState racing = CreateRacingState(0);
+            RaceFrame confirmed = new(new RaceState(
+                racing.FrameIndex,
+                racing.Phase,
+                0,
+                racing.Player0,
+                racing.Player1), new RaceInputs(QuantizedInput.Empty, QuantizedInput.Empty));
+
+            Assert.That(client.ApplyConfirmed(confirmed), Is.True);
+            Assert.That(client.RollbackCount, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void RollbackReconciliationMatchesTheServerHash()
+        {
+            FrameSyncServer server = CreateStartedRace();
+            FrameSyncClient client = CreateStartedClient(0);
+            for (int frameIndex = 0; frameIndex < 12; frameIndex++)
+            {
+                client.Predict(QuantizedInput.Empty);
+            }
+
+            Assert.That(server.DisconnectPlayer(11), Is.True);
+            for (int frameIndex = 0; frameIndex < 12; frameIndex++)
+            {
+                client.ApplyConfirmed(server.AdvanceFrame());
+            }
+
+            Assert.That(client.RollbackCount, Is.GreaterThan(0));
+            Assert.That(client.CurrentState.DeterministicHash(), Is.EqualTo(server.State.DeterministicHash()));
+        }
+
+        [Test]
+        public void ScriptedSequenceFinishesSameLapForServerAndClients()
+        {
+            FrameSyncServer server = CreateStartedRace();
+            FrameSyncClient first = CreateStartedClient(0);
+            FrameSyncClient second = CreateStartedClient(1);
+            for (int frameIndex = 0; frameIndex < 400; frameIndex++)
+            {
+                server.TrySubmit(new InputFrame(frameIndex, 0, ScriptedRaceInput.ForFrame(frameIndex)), 0);
+                RaceFrame confirmed = server.AdvanceFrame();
+                first.ApplyConfirmed(confirmed);
+                second.ApplyConfirmed(confirmed);
+                AssertWorldStateEqual(server.State, first.CurrentState);
+                AssertWorldStateEqual(server.State, second.CurrentState);
+                if (server.State.Player0.Status == PlayerStatus.Finished) break;
+            }
+
+            Assert.That(server.State.Player0.Status, Is.EqualTo(PlayerStatus.Finished));
+            Assert.That(server.State.Player0.Lap, Is.EqualTo(1));
+        }
+
+        private static FrameSyncServer CreateStartedRace()
         {
             FrameSyncServer server = new();
-            FrameSyncClient firstClient = new(0);
-            FrameSyncClient secondClient = new(1);
+            Assert.That(server.TryAssignPlayer(10, out _), Is.True);
+            Assert.That(server.TryAssignPlayer(11, out _), Is.True);
+            Assert.That(server.MarkPlayerReady(10), Is.True);
+            Assert.That(server.MarkPlayerReady(11), Is.True);
+            Assert.That(server.StartRace(), Is.True);
+            return server;
+        }
 
-            for (int frame = 0; frame < 400; frame++)
+        private static FrameSyncClient CreateStartedClient(byte playerId)
+        {
+            FrameSyncClient client = new(playerId);
+            client.StartRacePrediction();
+            return client;
+        }
+
+        private static void RunScriptedPlayerUntilFinished(FrameSyncServer server, byte playerId)
+        {
+            for (int frameIndex = server.NextFrameIndex; frameIndex < 500; frameIndex++)
             {
-                QuantizedInput playerZeroInput = RaceDemoInputSequence.ForFrame(frame);
-                Assert.That(server.TrySubmit(new InputFrame(frame, 0, playerZeroInput), 0), Is.True);
-
-                ConfirmedFrame confirmed = server.AdvanceFrame();
-                firstClient.Receive(confirmed);
-                secondClient.Receive(confirmed);
-                Assert.That(firstClient.TryAdvance(), Is.True);
-                Assert.That(secondClient.TryAdvance(), Is.True);
-                AssertWorldStateEqual(server.State, firstClient.State);
-                AssertWorldStateEqual(server.State, secondClient.State);
-
-                if (server.State.Player0.Phase == RacePhase.Finished)
+                Assert.That(server.TrySubmit(new InputFrame(
+                    frameIndex,
+                    playerId,
+                    ScriptedRaceInput.ForFrame(frameIndex)), playerId), Is.True);
+                server.AdvanceFrame();
+                if (server.State.GetPlayer(playerId).Status == PlayerStatus.Finished)
                 {
-                    break;
+                    return;
                 }
             }
 
-            Assert.That(server.State.Player0.Phase, Is.EqualTo(RacePhase.Finished));
-            Assert.That(server.State.Player0.Lap, Is.EqualTo(1));
-            Assert.That(server.State.Player1.Vehicle.Speed, Is.EqualTo(0));
+            Assert.Fail($"Player {playerId} did not finish the scripted lap.");
         }
 
-        private static void AssertWorldStateEqual(TwoPlayerRaceState expected, TwoPlayerRaceState actual)
+        private static RaceFrame Frame(int frameIndex)
         {
-            AssertRaceStateEqual(expected.Player0, actual.Player0);
-            AssertRaceStateEqual(expected.Player1, actual.Player1);
+            return new RaceFrame(
+                CreateRacingState(frameIndex),
+                new RaceInputs(QuantizedInput.Empty, QuantizedInput.Empty));
         }
 
-        private static void AssertRaceStateEqual(RaceState expected, RaceState actual)
+        private static RaceState CreateRacingState(int frameIndex)
         {
-            Assert.That(actual.Frame, Is.EqualTo(expected.Frame));
-            Assert.That(actual.Vehicle.PositionX, Is.EqualTo(expected.Vehicle.PositionX));
-            Assert.That(actual.Vehicle.PositionZ, Is.EqualTo(expected.Vehicle.PositionZ));
-            Assert.That(actual.Vehicle.Speed, Is.EqualTo(expected.Vehicle.Speed));
-            Assert.That(actual.Vehicle.HeadingTenths, Is.EqualTo(expected.Vehicle.HeadingTenths));
-            Assert.That(actual.NextCheckpoint, Is.EqualTo(expected.NextCheckpoint));
-            Assert.That(actual.Lap, Is.EqualTo(expected.Lap));
-            Assert.That(actual.Phase, Is.EqualTo(expected.Phase));
+            RaceState state = RaceState.CreateDefault();
+            PlayerRaceState player0 = new(
+                state.Player0.Vehicle,
+                state.Player0.NextCheckpoint,
+                state.Player0.Lap,
+                PlayerStatus.Playing);
+            PlayerRaceState player1 = new(
+                state.Player1.Vehicle,
+                state.Player1.NextCheckpoint,
+                state.Player1.Lap,
+                PlayerStatus.Playing);
+            return new RaceState(
+                frameIndex,
+                RacePhase.Racing,
+                RaceState.NoWinnerPlayerId,
+                player0,
+                player1);
+        }
+
+        private static void AssertWorldStateEqual(RaceState expected, RaceState actual)
+        {
+            Assert.That(actual.DeterministicHash(), Is.EqualTo(expected.DeterministicHash()));
         }
     }
 }

@@ -146,8 +146,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 4c486cd5cbda0f044bd094c71242b560, type: 3}
-  m_Name:
-  m_EditorClassIdentifier: Assembly-CSharp::CarRacing.Runtime.NetworkBootstrap
+  m_Name: ""
+  m_EditorClassIdentifier: Assembly-CSharp::CarRacing.Network.NetworkBootstrap
   networkManager: {fileID: 1763237006}
   frameSync: {fileID: 281829562}
 --- !u!4 &29648833
@@ -284,12 +284,13 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 108cb7e8656355e42933d60d5597149e, type: 3}
   m_Name: ""
-  m_EditorClassIdentifier: Assembly-CSharp::CarRacing.Runtime.FishNetFrameSync
+  m_EditorClassIdentifier: Assembly-CSharp::CarRacing.Network.FishNetFrameSync
   _componentIndexCache: 255
   _addedNetworkObject: {fileID: 281829563}
   _networkObjectCache: {fileID: 0}
   inputSource: {fileID: 655989181}
   raceView: {fileID: 655989185}
+  statusHud: {fileID: 655989184}
   upstreamDelayTicks: 0
   dropEveryNthInput: 0
 --- !u!114 &281829563
@@ -376,7 +377,6 @@ GameObject:
   - component: {fileID: 330585545}
   - component: {fileID: 330585544}
   - component: {fileID: 330585547}
-  - component: {fileID: 330585548}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -502,22 +502,6 @@ MonoBehaviour:
     m_VarianceClampScale: 0.9
     m_ContrastAdaptiveSharpening: 0
   m_Version: 2
---- !u!114 &330585548
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 330585543}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: c15bde3ef38bd324fb017835cbad3778, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::CarRacing.Runtime.RaceCameraFollow
-  target: {fileID: 2030484342}
-  localOffset: {x: 0, y: 6, z: -5}
-  positionSmoothTime: 0.18
-  rotationSharpness: 10
 --- !u!1 &410087039
 GameObject:
   m_ObjectHideFlags: 0
@@ -757,7 +741,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 655989183}
-  - component: {fileID: 655989182}
   - component: {fileID: 655989181}
   - component: {fileID: 655989184}
   - component: {fileID: 655989185}
@@ -779,22 +762,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 74446ba4d0de6c54a8982013e75aa84f, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::CarRacing.Runtime.KeyboardRaceInput
---- !u!114 &655989182
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 655989180}
-  m_Enabled: 0
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 3c61e035824fb304b953ee7b80390723, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::CarRacing.Runtime.SinglePlayerRaceController
-  inputSource: {fileID: 655989181}
-  vehicleView: {fileID: 2030484338}
-  statusView: {fileID: 655989184}
+  m_EditorClassIdentifier: CarRacing.Input::CarRacing.Input.KeyboardRaceInput
 --- !u!4 &655989183
 Transform:
   m_ObjectHideFlags: 0
@@ -821,7 +789,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d5c60f5fec7a43a48b02bae7f8606777, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::CarRacing.Runtime.RaceStatusView
+  m_EditorClassIdentifier: Assembly-CSharp::CarRacing.UI.RaceStatusHud
 --- !u!114 &655989185
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -833,11 +801,13 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 8ac406ae79c1b0b48822f986962c95a9, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::CarRacing.Runtime.TwoPlayerRaceView
-  player0View: {fileID: 2030484338}
-  player1View: {fileID: 1328470176}
-  statusView: {fileID: 655989184}
-  raceCamera: {fileID: 330585548}
+  m_EditorClassIdentifier: Assembly-CSharp::CarRacing.Scene.RaceSceneStateApplier
+  player0Transform: {fileID: 2030484342}
+  player1Transform: {fileID: 1328470180}
+  cameraTransform: {fileID: 330585546}
+  cameraLocalOffset: {x: 0, y: 6, z: -5}
+  cameraPositionSmoothTime: 0.18
+  cameraRotationSharpness: 10
 --- !u!1 &832575517
 GameObject:
   m_ObjectHideFlags: 0
@@ -992,12 +962,12 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1119804585}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 8.2}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: -6.41546, y: 0, z: 7.7774}
   m_LocalScale: {x: 36, y: 0.2, z: 7.6}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 0}
+  m_Father: {fileID: 1984191316}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1145923172
 GameObject:
@@ -1104,12 +1074,12 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1145923172}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 13.85, y: 0, z: 0}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 7.4345403, y: 0, z: -0.4226}
   m_LocalScale: {x: 8.3, y: 0.2, z: 16.4}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 0}
+  m_Father: {fileID: 1984191316}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!134 &1298754412
 PhysicsMaterial:
@@ -1136,7 +1106,6 @@ GameObject:
   - component: {fileID: 1328470179}
   - component: {fileID: 1328470178}
   - component: {fileID: 1328470177}
-  - component: {fileID: 1328470176}
   m_Layer: 0
   m_Name: Opponent Vehicle
   m_TagString: Untagged
@@ -1144,19 +1113,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &1328470176
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1328470175}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f78651a2c9cc27a4a80db77d4a696ecd, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::CarRacing.Runtime.RaceVehicleView
-  vehicleModel: {fileID: 1328470180}
 --- !u!23 &1328470177
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -1356,12 +1312,12 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1586925964}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -8.2}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: -6.41546, y: 0, z: -8.6226}
   m_LocalScale: {x: 36, y: 0.2, z: 7.6}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 0}
+  m_Father: {fileID: 1984191316}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &1763237005
 PrefabInstance:
@@ -1526,8 +1482,8 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 1, y: 1, z: 1}
-  m_Center: {x: 0, y: 0, z: 0}
+  m_Size: {x: 1.2968887, y: 1, z: 1.3694266}
+  m_Center: {x: 0.14844418, y: 0, z: -0.013859034}
 --- !u!33 &1794817673
 MeshFilter:
   m_ObjectHideFlags: 0
@@ -1544,12 +1500,12 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1794817670}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0.15, z: -8}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: -6.41546, y: 0.15, z: -8.4226}
   m_LocalScale: {x: 0.3, y: 0.1, z: 6}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 0}
+  m_Father: {fileID: 1984191316}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1908912764
 GameObject:
@@ -1656,12 +1612,12 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1908912764}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: -0.5, z: 0}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: -6.41546, y: -0.5, z: -0.4226}
   m_LocalScale: {x: 40, y: 1, z: 30}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 0}
+  m_Father: {fileID: 1984191316}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1941304152
 GameObject:
@@ -1753,6 +1709,43 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1984191315
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1984191316}
+  m_Layer: 0
+  m_Name: Track
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1984191316
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1984191315}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 6.41546, y: 0, z: 0.4226}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 1794817674}
+  - {fileID: 1586925968}
+  - {fileID: 1908912768}
+  - {fileID: 1119804589}
+  - {fileID: 2097055471}
+  - {fileID: 1145923176}
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &2030484337
 GameObject:
   m_ObjectHideFlags: 0
@@ -1765,7 +1758,6 @@ GameObject:
   - component: {fileID: 2030484341}
   - component: {fileID: 2030484340}
   - component: {fileID: 2030484339}
-  - component: {fileID: 2030484338}
   m_Layer: 0
   m_Name: Player Vehicle
   m_TagString: Untagged
@@ -1773,19 +1765,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &2030484338
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2030484337}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f78651a2c9cc27a4a80db77d4a696ecd, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::CarRacing.Runtime.RaceVehicleView
-  vehicleModel: {fileID: 2030484342}
 --- !u!23 &2030484339
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -1985,12 +1964,12 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2097055467}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -13.85, y: 0, z: 0}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: -20.265461, y: 0, z: -0.4226}
   m_LocalScale: {x: 8.3, y: 0.2, z: 16.4}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 0}
+  m_Father: {fileID: 1984191316}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
@@ -2001,14 +1980,9 @@ SceneRoots:
   - {fileID: 832575519}
   - {fileID: 655989183}
   - {fileID: 2030484342}
-  - {fileID: 1908912768}
-  - {fileID: 1586925968}
-  - {fileID: 1119804589}
-  - {fileID: 2097055471}
-  - {fileID: 1145923176}
-  - {fileID: 1794817674}
   - {fileID: 1941304155}
   - {fileID: 1763237005}
   - {fileID: 281829564}
   - {fileID: 29648833}
   - {fileID: 1328470180}
+  - {fileID: 1984191316}

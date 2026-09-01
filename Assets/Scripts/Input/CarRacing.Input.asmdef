@@ -1,0 +1,5 @@
+{
+  "name": "CarRacing.Input",
+  "rootNamespace": "CarRacing.Input",
+  "references": ["CarRacing.Race", "Unity.InputSystem"]
+}

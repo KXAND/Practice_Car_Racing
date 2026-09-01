@@ -1,0 +1,5 @@
+{
+  "name": "CarRacing.FrameSync",
+  "rootNamespace": "CarRacing.Network.FrameSync",
+  "references": ["CarRacing.Race"]
+}
